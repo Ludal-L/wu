@@ -186,13 +186,13 @@
     <!-- 音效元素 (隐藏) -->
     <audio id="https://1318328187.vod2.myqcloud.com/3dcdd3b3vodsh1318328187/d9c3be035145403692245906490/PLnHfKCuhxQA.mp3" loop>
         <!-- 替换为您的封面背景音乐 -->
-        <source src="" type="audio/mpeg">
+        <source src="https://1318328187.vod2.myqcloud.com/3dcdd3b3vodsh1318328187/d9c3be035145403692245906490/PLnHfKCuhxQA.mp3" type="audio/mpeg">
     </audio>
-    <audio id="https://1318328187.vod2.myqcloud.com/3dcdd3b3vodsh1318328187/b66016e71397757904325548003/lKlUeAWpOsMA.mp3" loop>
+    <audio id="gameMusic" loop>
         <!-- 替换为您的游戏背景音乐 -->
         <source src="" type="audio/mpeg">
     </audio>
-    <audio id="https://1318328187.vod2.myqcloud.com/3dcdd3b3vodsh1318328187/499adcee1397757904327283822/q3mrjh5sJrgA.mp3">
+    <audio id="placeSound">
         <!-- 替换为您的落子音效 -->
         <source src="" type="audio/mpeg">
     </audio>
@@ -412,18 +412,31 @@
         
         // 电脑落子
         function computerMove() {
+            // 确保有可用位置才进行落子
+            const hasEmptyCell = gameState.board.some(row => row.includes(0));
+            if (!hasEmptyCell) {
+                updateGameStatus('平局！');
+                return;
+            }
+            
             // 根据难度计算电脑落子位置
             let x, y;
             
             if (config.difficulty === 1) {
-                // 简单难度：随机落子，但会优先防守
+                // 简单难度：优先防守，有一定进攻意识
                 [x, y] = getEasyMove();
             } else if (config.difficulty === 2) {
-                // 一般难度：有一定的进攻和防守能力
+                // 一般难度：攻防平衡策略
                 [x, y] = getMediumMove();
             } else {
-                // 困难难度：较强的AI算法
+                // 困难难度：强进攻，多线路预判
                 [x, y] = getHardMove();
+            }
+            
+            // 安全检查：确保选择的位置是空的
+            if (gameState.board[y][x] !== 0) {
+                console.log('修复异常：选择了非空位置，重新选择');
+                [x, y] = getRandomMove();
             }
             
             // 电脑落子
@@ -441,53 +454,89 @@
             updateGameStatus();
         }
         
-        // 简单难度AI
+        // 简单难度AI：优先防守，基础进攻
         function getEasyMove() {
-            // 先检查是否有能立即获胜的位置
+            // 1. 检查是否有能立即获胜的位置（必走）
             const winMove = findWinningMove(2);
             if (winMove) return winMove;
             
-            // 再检查是否需要防守（玩家即将获胜）
+            // 2. 检查玩家是否即将获胜（优先防守）
             const defenseMove = findWinningMove(1);
             if (defenseMove) return defenseMove;
             
-            // 否则随机落子
-            return getRandomMove();
-        }
-        
-        // 一般难度AI
-        function getMediumMove() {
-            // 先检查是否有能立即获胜的位置
-            const winMove = findWinningMove(2);
-            if (winMove) return winMove;
-            
-            // 再检查是否需要防守（玩家即将获胜）
-            const defenseMove = findWinningMove(1);
-            if (defenseMove) return defenseMove;
-            
-            // 寻找有潜力的进攻位置（能形成活三等）
-            const offensiveMove = findOffensiveMove();
+            // 3. 检查是否能形成活三或冲四（基础进攻）
+            const offensiveMove = findPotentialMove(2, 50); // 低分阈值
             if (offensiveMove) return offensiveMove;
             
-            // 否则在中心区域附近落子
-            return getRandomMoveNearCenter();
+            // 4. 检查玩家是否有活二或冲三（次级防守）
+            const secondaryDefense = findPotentialMove(1, 30); // 更低阈值
+            if (secondaryDefense) return secondaryDefense;
+            
+            // 5. 中心区域落子
+            return getRandomMoveNearCenter() || getRandomMove();
         }
         
-        // 困难难度AI（简化版，实际会更复杂）
-        function getHardMove() {
-            // 先检查是否有能立即获胜的位置
+        // 一般难度AI：攻防平衡
+        function getMediumMove() {
+            // 1. 检查是否有能立即获胜的位置（必走）
             const winMove = findWinningMove(2);
             if (winMove) return winMove;
             
-            // 再检查是否需要防守（玩家即将获胜）
+            // 2. 检查玩家是否即将获胜（优先防守）
             const defenseMove = findWinningMove(1);
             if (defenseMove) return defenseMove;
             
-            // 评估所有可能的落子位置，选择得分最高的
-            return getBestMove();
+            // 3. 寻找高分进攻位置（活三、冲四）
+            const highOffense = findPotentialMove(2, 100);
+            if (highOffense) return highOffense;
+            
+            // 4. 阻止玩家的活三（重要防守）
+            const blockThree = findPotentialMove(1, 80);
+            if (blockThree) return blockThree;
+            
+            // 5. 寻找中等进攻位置（活二）
+            const midOffense = findPotentialMove(2, 50);
+            if (midOffense) return midOffense;
+            
+            // 6. 阻止玩家的活二
+            const blockTwo = findPotentialMove(1, 40);
+            if (blockTwo) return blockTwo;
+            
+            // 7. 策略性位置落子
+            return getStrategicMove() || getRandomMoveNearCenter();
         }
         
-        // 寻找能立即获胜的位置
+        // 困难难度AI：强进攻，多线路预判
+        function getHardMove() {
+            // 1. 检查是否有能立即获胜的位置（必走）
+            const winMove = findWinningMove(2);
+            if (winMove) return winMove;
+            
+            // 2. 检查玩家是否即将获胜（优先防守）
+            const defenseMove = findWinningMove(1);
+            if (defenseMove) return defenseMove;
+            
+            // 3. 寻找能形成多种威胁的进攻位置
+            const multiThreat = findMultiThreatMove();
+            if (multiThreat) return multiThreat;
+            
+            // 4. 高分进攻位置（活三、冲四）
+            const highOffense = findPotentialMove(2, 150);
+            if (highOffense) return highOffense;
+            
+            // 5. 阻止玩家的潜在威胁（预判一步）
+            const blockFuture = findFutureThreat(1);
+            if (blockFuture) return blockFuture;
+            
+            // 6. 中等进攻位置
+            const midOffense = findPotentialMove(2, 80);
+            if (midOffense) return midOffense;
+            
+            // 7. 战略性落子
+            return getStrategicMove() || getRandomMoveNearCenter();
+        }
+        
+        // 寻找能立即获胜的位置（形成五子连珠）
         function findWinningMove(player) {
             for (let y = 0; y < config.boardSize; y++) {
                 for (let x = 0; x < config.boardSize; x++) {
@@ -510,30 +559,103 @@
             return null;
         }
         
-        // 寻找有潜力的进攻位置
-        function findOffensiveMove() {
-            // 简单评估：寻找能形成4连珠的位置
+        // 寻找有潜力的进攻/防守位置（根据分数阈值）
+        function findPotentialMove(player, scoreThreshold) {
+            let bestScore = 0;
+            let bestMove = null;
+            
+            // 遍历所有空位
+            for (let y = 0; y < config.boardSize; y++) {
+                for (let x = 0; x < config.boardSize; x++) {
+                    if (gameState.board[y][x] === 0) {
+                        // 尝试落子
+                        gameState.board[y][x] = player;
+                        
+                        // 评估这个位置的价值
+                        const score = evaluatePosition(x, y, player);
+                        
+                        // 撤销尝试
+                        gameState.board[y][x] = 0;
+                        
+                        // 如果分数高于阈值且是目前最高的，更新最佳位置
+                        if (score > scoreThreshold && score > bestScore) {
+                            bestScore = score;
+                            bestMove = [x, y];
+                        }
+                    }
+                }
+            }
+            
+            return bestMove;
+        }
+        
+        // 寻找能形成多种威胁的位置（困难难度用）
+        function findMultiThreatMove() {
+            let bestScore = 0;
+            let bestMove = null;
+            
+            // 遍历所有空位
             for (let y = 0; y < config.boardSize; y++) {
                 for (let x = 0; x < config.boardSize; x++) {
                     if (gameState.board[y][x] === 0) {
                         // 尝试落子
                         gameState.board[y][x] = 2;
                         
-                        // 检查是否能形成4连珠（下一步可能获胜）
-                        if (evaluatePosition(x, y, 2) >= 100) {
-                            // 撤销尝试
-                            gameState.board[y][x] = 0;
-                            return [x, y];
+                        // 评估威胁数量（不同方向的进攻）
+                        let threatCount = 0;
+                        const directions = [[1,0], [0,1], [1,1], [1,-1]];
+                        
+                        for (const [dx, dy] of directions) {
+                            // 检查每个方向是否形成威胁
+                            if (evaluateDirection(x, y, 2, dx, dy) >= 50) {
+                                threatCount++;
+                            }
                         }
                         
                         // 撤销尝试
                         gameState.board[y][x] = 0;
+                        
+                        // 多个方向的威胁比单一高威胁更有价值
+                        const score = threatCount * 100;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMove = [x, y];
+                        }
                     }
                 }
             }
             
-            // 寻找中心区域的位置
-            return getRandomMoveNearCenter();
+            return bestScore > 150 ? bestMove : null;
+        }
+        
+        // 预判玩家下一步可能的威胁（困难难度用）
+        function findFutureThreat(player) {
+            // 找出玩家可能下的最佳位置
+            let playerBestMove = null;
+            let playerBestScore = 0;
+            
+            for (let y = 0; y < config.boardSize; y++) {
+                for (let x = 0; x < config.boardSize; x++) {
+                    if (gameState.board[y][x] === 0) {
+                        // 模拟玩家落子
+                        gameState.board[y][x] = player;
+                        const score = evaluatePosition(x, y, player);
+                        gameState.board[y][x] = 0;
+                        
+                        if (score > playerBestScore) {
+                            playerBestScore = score;
+                            playerBestMove = [x, y];
+                        }
+                    }
+                }
+            }
+            
+            // 如果玩家的最佳位置威胁很大，就阻止它
+            if (playerBestMove && playerBestScore > 80) {
+                return playerBestMove;
+            }
+            
+            return null;
         }
         
         // 评估位置的价值
@@ -549,64 +671,116 @@
             ];
             
             for (const [dx, dy] of directions) {
-                // 计算当前方向上连续的棋子数量
-                let count = 1;  // 当前位置已有一个棋子
-                
-                // 正方向
-                for (let i = 1; i < 5; i++) {
-                    const nx = x + dx * i;
-                    const ny = y + dy * i;
-                    if (nx < 0 || nx >= config.boardSize || ny < 0 || ny >= config.boardSize) break;
-                    if (gameState.board[ny][nx] !== player) break;
-                    count++;
-                }
-                
-                // 反方向
-                for (let i = 1; i < 5; i++) {
-                    const nx = x - dx * i;
-                    const ny = y - dy * i;
-                    if (nx < 0 || nx >= config.boardSize || ny < 0 || ny >= config.boardSize) break;
-                    if (gameState.board[ny][nx] !== player) break;
-                    count++;
-                }
-                
-                // 根据连续棋子数量给予分数
-                if (count >= 5) score += 10000;  // 五子连珠，最高分数
-                else if (count === 4) score += 1000;  // 四子，高分
-                else if (count === 3) score += 100;   // 三子，中等分数
-                else if (count === 2) score += 10;    // 二子，低分
+                score += evaluateDirection(x, y, player, dx, dy);
             }
             
             return score;
         }
         
-        // 寻找最佳落子位置（用于困难难度）
-        function getBestMove() {
-            let bestScore = -1;
-            let bestMove = null;
+        // 评估特定方向上的价值
+        function evaluateDirection(x, y, player, dx, dy) {
+            // 计算当前方向上连续的棋子数量和空格情况
+            let count = 1;  // 当前位置已有一个棋子
+            let blocked = 0; // 被对方阻挡的次数
+            let emptyEnds = 0; // 两端的空格数量
             
-            // 只检查有棋子附近的位置，减少计算量
-            const candidates = getCandidateMoves();
-            
-            for (const [x, y] of candidates) {
-                // 尝试落子
-                gameState.board[y][x] = 2;
+            // 正方向
+            for (let i = 1; i < 5; i++) {
+                const nx = x + dx * i;
+                const ny = y + dy * i;
+                if (nx < 0 || nx >= config.boardSize || ny < 0 || ny >= config.boardSize) {
+                    blocked++;
+                    break;
+                }
                 
-                // 评估这个位置的价值
-                const score = evaluatePosition(x, y, 2);
-                
-                // 撤销尝试
-                gameState.board[y][x] = 0;
-                
-                // 如果分数更高，更新最佳位置
-                if (score > bestScore) {
-                    bestScore = score;
-                    bestMove = [x, y];
+                if (gameState.board[ny][nx] === player) {
+                    count++;
+                } else if (gameState.board[ny][nx] === 0) {
+                    emptyEnds++;
+                    break;
+                } else {
+                    blocked++;
+                    break;
                 }
             }
             
-            // 如果没有找到好的位置，返回随机位置
-            return bestMove || getRandomMoveNearCenter();
+            // 反方向
+            for (let i = 1; i < 5; i++) {
+                const nx = x - dx * i;
+                const ny = y - dy * i;
+                if (nx < 0 || nx >= config.boardSize || ny < 0 || ny >= config.boardSize) {
+                    blocked++;
+                    break;
+                }
+                
+                if (gameState.board[ny][nx] === player) {
+                    count++;
+                } else if (gameState.board[ny][nx] === 0) {
+                    emptyEnds++;
+                    break;
+                } else {
+                    blocked++;
+                    break;
+                }
+            }
+            
+            // 根据连珠数量、阻挡情况和空格情况评分
+            // 活N：两端都有空位
+            // 冲N：一端有空位，一端被阻挡
+            if (count >= 5) return 10000; // 五子连珠
+            else if (count === 4) {
+                if (emptyEnds >= 1) return 1000; // 冲四或活四
+                else return 500; // 被阻挡的四
+            }
+            else if (count === 3) {
+                if (emptyEnds === 2) return 200; // 活三
+                else if (emptyEnds === 1) return 100; // 冲三
+                else return 50; // 被阻挡的三
+            }
+            else if (count === 2) {
+                if (emptyEnds === 2) return 50; // 活二
+                else if (emptyEnds === 1) return 30; // 冲二
+                else return 10; // 被阻挡的二
+            }
+            else if (count === 1) {
+                if (emptyEnds === 2) return 10; // 活一
+                else return 5; // 冲一
+            }
+            
+            return 0;
+        }
+        
+        // 获取战略性位置（控制中心和关键点）
+        function getStrategicMove() {
+            // 优先控制中心和传统棋盘中的关键点
+            const keyPoints = [
+                {x:7, y:7},  // 中心
+                {x:7, y:3},  // 上中
+                {x:7, y:11}, // 下中
+                {x:3, y:7},  // 左中
+                {x:11, y:7}, // 右中
+                {x:3, y:3},  // 左上
+                {x:3, y:11}, // 左下
+                {x:11, y:3}, // 右上
+                {x:11, y:11} // 右下
+            ];
+            
+            // 检查关键点是否为空
+            for (const point of keyPoints) {
+                if (gameState.board[point.y][point.x] === 0) {
+                    // 检查这个关键点是否有战略价值
+                    gameState.board[point.y][point.x] = 2;
+                    const score = evaluatePosition(point.x, point.y, 2);
+                    gameState.board[point.y][point.x] = 0;
+                    
+                    if (score > 20) {
+                        return [point.x, point.y];
+                    }
+                }
+            }
+            
+            // 没有合适的关键点，返回null
+            return null;
         }
         
         // 获取候选落子位置（有棋子附近的位置）
@@ -618,8 +792,8 @@
                 for (let x = 0; x < config.boardSize; x++) {
                     if (gameState.board[y][x] !== 0) {
                         // 添加周围的空位作为候选
-                        for (let dy = -2; dy <= 2; dy++) {
-                            for (let dx = -2; dx <= 2; dx++) {
+                        for (let dy = -3; dy <= 3; dy++) {
+                            for (let dx = -3; dx <= 3; dx++) {
                                 const nx = x + dx;
                                 const ny = y + dy;
                                 if (nx >= 0 && nx < config.boardSize && ny >= 0 && ny < config.boardSize && gameState.board[ny][nx] === 0) {
@@ -634,11 +808,13 @@
             // 如果还没有棋子，返回中心附近的位置
             if (candidates.size === 0) {
                 const center = Math.floor(config.boardSize / 2);
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
                         const nx = center + dx;
                         const ny = center + dy;
-                        candidates.add(`${nx},${ny}`);
+                        if (nx >= 0 && nx < config.boardSize && ny >= 0 && ny < config.boardSize) {
+                            candidates.add(`${nx},${ny}`);
+                        }
                     }
                 }
             }
@@ -669,8 +845,8 @@
                 return [emptyCells[randomIndex].x, emptyCells[randomIndex].y];
             }
             
-            // 棋盘已满（理论上不会走到这里，因为会先判断平局）
-            return [0, 0];
+            // 理论上不会执行到这里
+            return [7, 7]; // 返回中心位置作为最后的备选
         }
         
         // 获取中心附近的随机位置
@@ -694,8 +870,7 @@
                 return [candidates[randomIndex].x, candidates[randomIndex].y];
             }
             
-            // 否则返回任意随机位置
-            return getRandomMove();
+            return null;
         }
         
         // 检查是否获胜
